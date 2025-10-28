@@ -2,7 +2,7 @@ import { Connection, PublicKey } from "@solana/web3.js";
 import WebSocket from "ws";
 import { config } from "../config/config";
 import { TransactionHandler } from "./transaction-handler";
-import { logger } from "../utils/logger";
+import { logger } from "../utils/logger.ts";
 
 export class BlockchainMonitor {
 	private ws: WebSocket | null = null;

@@ -8,7 +8,7 @@ import {
 } from "@solana/spl-token";
 import bs58 from "bs58";
 import { config } from "../config/config";
-import { logger } from "../utils/logger";
+import { logger } from "../utils/logger.ts";
 
 export class TokenManager {
 	private connection: Connection;

@@ -2,7 +2,7 @@ import { Connection } from "@solana/web3.js";
 import { TokenManager } from "./token-manager";
 import { YieldGenerator } from "./yield-generator";
 import type { DepositTransaction, WithdrawalTransaction } from "../types";
-import { logger } from "../utils/logger";
+import { logger } from "../utils/logger.ts";
 
 export class TransactionHandler {
 	private tokenManager: TokenManager;
