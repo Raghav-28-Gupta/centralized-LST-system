@@ -3,6 +3,7 @@ import { TokenManager } from "./token-manager";
 import { YieldGenerator } from "./yield-generator";
 import type { DepositTransaction, WithdrawalTransaction } from "../types";
 import { logger } from "../utils/logger.ts";
+import { db } from "./database.ts";
 
 export class TransactionHandler {
 	private tokenManager: TokenManager;
@@ -17,14 +18,17 @@ export class TransactionHandler {
 		try {
 			logger.info(`Processing deposit: ${deposit.amount / 1e9} SOL from ${deposit.userPublicKey}`);
 
-			// 1. Mint LST tokens to user
+			// 1. Save to database FIRST (for audit trial)
+			await db.saveDeposit(deposit);
+
+			// 2. Mint LST tokens to user
 			const mintSignature = await this.tokenManager.mintLSTToUser(
 				deposit.userPublicKey,
 				deposit.amount
 			);
 
-			// 2. Store user position in database (MongoDB/PostgreSQL)
-			await this.storeUserPosition({
+			// 3. Store user position in database (MongoDB/PostgreSQL)
+			await db.savePosition({
 				userPublicKey: deposit.userPublicKey,
 				solDeposited: deposit.amount,
 				lstTokensReceived: deposit.amount, // 1:1 initially
@@ -32,7 +36,7 @@ export class TransactionHandler {
 				yieldAccrued: 0,
 			});
 
-			// 3. Start yield generation for this user
+			// 4. Start yield generation for this user
 			await this.yieldGenerator.startYieldGeneration(
 				deposit.userPublicKey,
 				deposit.amount
@@ -51,17 +55,21 @@ export class TransactionHandler {
 		try {
 			logger.info(`Processing withdrawal: ${withdrawal.lstAmount / 1e9} lstSOL from ${withdrawal.userPublicKey}`);
 
-			// 1. Burn LST tokens and return SOL
+			// 1. Save to database FIRST
+			await db.saveWithdrawal(withdrawal);
+
+			// 2. Burn LST tokens and return SOL
 			const burnSignature = await this.tokenManager.burnLSTAndReturnSOL(
 				withdrawal.userPublicKey,
 				withdrawal.lstAmount
 			);
 
-			// 2. Update database
-			await this.updateUserPosition(
-				withdrawal.userPublicKey,
-				withdrawal.lstAmount
-			);
+			// 3. Update database
+			const position = await db.getPosition(withdrawal.userPublicKey);
+			if (position) {
+				position.lstTokensReceived -= withdrawal.lstAmount;
+				await db.savePosition(position);
+			}
 
 			logger.info(
 				`✅ Withdrawal processed successfully. Burn signature: ${burnSignature}`
@@ -69,19 +77,5 @@ export class TransactionHandler {
 		} catch (error) {
 			logger.error("Error handling withdrawal:", error);
 		}
-	}
-
-	private async storeUserPosition(position: any): Promise<void> {
-		// Save to MongoDB/PostgreSQL
-		// await db.collection('positions').insertOne(position);
-		logger.info("Stored user position:", position);
-	}
-
-	private async updateUserPosition(
-		userPublicKey: string,
-		lstAmount: number
-	): Promise<void> {
-		// Update database
-		logger.info(`Updated position for ${userPublicKey}`);
 	}
 }
