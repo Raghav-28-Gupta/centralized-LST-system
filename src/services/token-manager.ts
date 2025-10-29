@@ -1,4 +1,4 @@
-import { Connection, Keypair, PublicKey, SystemProgram, Transaction } from "@solana/web3.js";
+import { Connection, Keypair, PublicKey, sendAndConfirmRawTransaction, sendAndConfirmTransaction, SystemProgram, Transaction } from "@solana/web3.js";
 import {
 	TOKEN_2022_PROGRAM_ID,
 	createMintToInstruction,
@@ -17,9 +17,7 @@ export class TokenManager {
 
 	constructor(connection: Connection) {
 		this.connection = connection;
-		this.authority = Keypair.fromSecretKey(
-			bs58.decode(config.authorityKeypair)
-		);
+		this.authority = Keypair.fromSecretKey(bs58.decode(config.authorityKeypair));
 		this.lstMint = new PublicKey(config.lstMintAddress);
 	}
 
@@ -33,9 +31,7 @@ export class TokenManager {
 			// Calculate LST amount based on exchange rate
 			const lstAmount = Math.floor(solAmount * config.exchangeRate);
 
-			logger.info(
-				`Minting ${lstAmount / 1e9} lstSOL to ${userPublicKey}`
-			);
+			logger.info(`Minting ${lstAmount / 1e9} lstSOL to ${userPublicKey}`);
 
 			// Get or create user's ATA
 			const userATA = getAssociatedTokenAddressSync(
@@ -73,12 +69,8 @@ export class TokenManager {
 					TOKEN_2022_PROGRAM_ID
 				)
 			);
-
-			const signature = await this.connection.sendTransaction(
-				transaction,
-				[this.authority]
-			);
-			await this.connection.confirmTransaction(signature, "confirmed");
+               
+			const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.authority]);  
 
 			logger.info(
 				`✅ Minted ${lstAmount / 1e9} lstSOL. Signature: ${signature}`

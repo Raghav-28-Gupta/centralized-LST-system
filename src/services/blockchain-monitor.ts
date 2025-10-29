@@ -10,7 +10,7 @@ export class BlockchainMonitor {
 	private connection: Connection;
 	private transactionHandler: TransactionHandler;
 	private depositAddress: PublicKey;
-	// In-memory store to avoid double-processing. Replace with DB/cache for production.
+	// In-memory store to avoid double-processing. (Can also replace with DB/cache for production.
 	private processedSignatures: Set<string> = new Set();
 
 	constructor() {
