@@ -1,6 +1,6 @@
 import { BlockchainMonitor } from "./services/blockchain-monitor";
 import { config } from "./config/config";
-import { db } from "./services/database"; // ADD THIS
+import { db } from "./services/database"; 
 import { logger } from "./utils/logger";
 
 async function main() {
@@ -24,7 +24,7 @@ async function main() {
 		process.on("SIGINT", async () => {
 			logger.info("Shutting down...");
 			monitor.stop();
-			await db.close(); // ADD THIS
+			await db.close(); 
 			process.exit(0);
 		});
 	} catch (error) {

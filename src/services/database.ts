@@ -26,7 +26,7 @@ export class Database {
 			this.deposits = this.db.collection("deposits");
 			this.withdrawals = this.db.collection("withdrawals");
 
-			logger.info("✅ Connected to MongoDB");
+			logger.info("Connected to MongoDB");
 		} catch (error) {
 			logger.error("Failed to connect to MongoDB:", error);
 			throw error;

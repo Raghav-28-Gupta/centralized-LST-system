@@ -72,9 +72,7 @@ export class TokenManager {
                
 			const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.authority]);  
 
-			logger.info(
-				`✅ Minted ${lstAmount / 1e9} lstSOL. Signature: ${signature}`
-			);
+			logger.info(`Minted ${lstAmount / 1e9} lstSOL. Signature: ${signature}`);
 
 			return signature;
 		} catch (error) {
