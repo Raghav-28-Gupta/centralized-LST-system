@@ -3,7 +3,6 @@ import WebSocket from "ws";
 import { config } from "../config/config";
 import { TransactionHandler } from "./transaction-handler";
 import { logger } from "../utils/logger.ts";
-import { SignatureKind } from "typescript";
 
 export class BlockchainMonitor {
 	private ws: WebSocket | null = null;
@@ -12,6 +11,7 @@ export class BlockchainMonitor {
 	private depositAddress: PublicKey;
 	// In-memory store to avoid double-processing. (Can also replace with DB/cache for production.
 	private processedSignatures: Set<string> = new Set();
+	private isReconnecting: boolean = false;
 
 	constructor() {
 		// Use 'finalized' for stronger finality guarantees on reads
@@ -28,6 +28,7 @@ export class BlockchainMonitor {
 
 		this.ws.on("open", () => {
 			logger.info("Connected to Helius WebSocket");
+			this.isReconnecting = false;
 
 			// Subscribe to transactions for your deposit address
 			const subscribeMessage = {
@@ -59,8 +60,7 @@ export class BlockchainMonitor {
 
 				if (message.method === "transactionNotification") {
 					// Helius may include transaction under params.result.transaction
-					const transaction =
-						message.params?.result?.transaction ?? message.params?.result;
+					const transaction = message.params?.result?.transaction ?? message.params?.result;
 					await this.handleIncomingTransaction(transaction);
 				}
 			} catch (error) {
@@ -161,6 +161,8 @@ export class BlockchainMonitor {
 	}
 
 	private reconnect(): void {
+		if (this.isReconnecting) return;
+		this.isReconnecting = true;
 		setTimeout(() => {
 			logger.info("Attempting to reconnect...");
 			this.startHeliusMonitoring();
