@@ -1,28 +1,36 @@
 import { BlockchainMonitor } from "./services/blockchain-monitor";
 import { config } from "./config/config";
+import { db } from "./services/database"; // ADD THIS
 import { logger } from "./utils/logger";
 
 async function main() {
-	logger.info("🚀 Starting LST System Backend...");
-	logger.info("Deposit Address:", config.depositAddress);
-	logger.info("LST Mint:", config.lstMintAddress);
+	try {
+		logger.info("🚀 Starting LST System Backend...");
+		logger.info("Deposit Address:", config.depositAddress);
+		logger.info("LST Mint:", config.lstMintAddress);
 
-	const monitor = new BlockchainMonitor();
+		// Connect to database
+		await db.connect();
 
-	// Use Helius WebSocket if API key is available
-	if (config.heliusApiKey) {
-		await monitor.startHeliusMonitoring();
-	} else {
-		logger.warn("No Helius API key found. Using polling instead.");
-		await monitor.startPollingMonitoring();
+		const monitor = new BlockchainMonitor();
+
+		if (config.heliusApiKey) {
+			await monitor.startHeliusMonitoring();
+		} else {
+			logger.warn("No Helius API key found. Using polling instead.");
+		}
+
+		// Graceful shutdown
+		process.on("SIGINT", async () => {
+			logger.info("Shutting down...");
+			monitor.stop();
+			await db.close(); // ADD THIS
+			process.exit(0);
+		});
+	} catch (error) {
+		logger.error("Failed to start:", error);
+		process.exit(1);
 	}
-
-	// Graceful shutdown
-	process.on("SIGINT", () => {
-		logger.info("Shutting down...");
-		monitor.stop();
-		process.exit(0);
-	});
 }
 
 main().catch((error) => {
