@@ -15,11 +15,7 @@ export class TransactionHandler {
 
 	async handleDeposit(deposit: DepositTransaction): Promise<void> {
 		try {
-			logger.info(
-				`Processing deposit: ${deposit.amount / 1e9} SOL from ${
-					deposit.userPublicKey
-				}`
-			);
+			logger.info(`Processing deposit: ${deposit.amount / 1e9} SOL from ${deposit.userPublicKey}`);
 
 			// 1. Mint LST tokens to user
 			const mintSignature = await this.tokenManager.mintLSTToUser(
@@ -53,11 +49,7 @@ export class TransactionHandler {
 
 	async handleWithdrawal(withdrawal: WithdrawalTransaction): Promise<void> {
 		try {
-			logger.info(
-				`Processing withdrawal: ${
-					withdrawal.lstAmount / 1e9
-				} lstSOL from ${withdrawal.userPublicKey}`
-			);
+			logger.info(`Processing withdrawal: ${withdrawal.lstAmount / 1e9} lstSOL from ${withdrawal.userPublicKey}`);
 
 			// 1. Burn LST tokens and return SOL
 			const burnSignature = await this.tokenManager.burnLSTAndReturnSOL(
