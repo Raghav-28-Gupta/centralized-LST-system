@@ -6,6 +6,13 @@
   "devDependencies": {
     "@types/bun": "latest"
   },
+  "scripts": {
+    "dev": "bun run src/index.ts",
+    "start": "bun run src/index.ts",
+    "test:deposit": "bun run src/scripts/test-deposit.ts",
+    "build": "bun build src/index.ts --outdir ./dist --target bun",
+    "lint": "tsc --noEmit"
+  },
   "peerDependencies": {
     "typescript": "^5"
   },

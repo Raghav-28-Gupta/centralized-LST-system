@@ -9,9 +9,6 @@ async function main() {
 		logger.info("Deposit Address:", config.depositAddress);
 		logger.info("LST Mint:", config.lstMintAddress);
 
-		// Connect to database
-		await db.connect();
-
 		const monitor = new BlockchainMonitor();
 
 		if (config.heliusApiKey) {
@@ -24,7 +21,7 @@ async function main() {
 		process.on("SIGINT", async () => {
 			logger.info("Shutting down...");
 			monitor.stop();
-			await db.close(); 
+			// await db.close(); 
 			process.exit(0);
 		});
 	} catch (error) {

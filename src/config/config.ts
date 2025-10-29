@@ -1,7 +1,7 @@
 export const config = {
 	// Helius
 	heliusApiKey: process.env.HELIUS_API_KEY || "",
-	heliusWebsocketUrl: `wss://atlas-mainnet.helius-rpc.com?api-key=${process.env.HELIUS_API_KEY}`,
+	heliusWebsocketUrl: `wss://devnet.helius-rpc.com?api-key=${process.env.HELIUS_API_KEY}`,
 
 	// Solana
 	rpcUrl: process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
