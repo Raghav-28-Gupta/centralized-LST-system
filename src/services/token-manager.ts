@@ -1,4 +1,12 @@
-import { Connection, Keypair, PublicKey, sendAndConfirmRawTransaction, sendAndConfirmTransaction, SystemProgram, Transaction } from "@solana/web3.js";
+import {
+	Connection,
+	Keypair,
+	PublicKey,
+	sendAndConfirmRawTransaction,
+	sendAndConfirmTransaction,
+	SystemProgram,
+	Transaction,
+} from "@solana/web3.js";
 import {
 	TOKEN_2022_PROGRAM_ID,
 	createMintToInstruction,
@@ -17,7 +25,9 @@ export class TokenManager {
 
 	constructor(connection: Connection) {
 		this.connection = connection;
-		this.authority = Keypair.fromSecretKey(bs58.decode(config.authorityKeypair));
+		this.authority = Keypair.fromSecretKey(
+			bs58.decode(config.authorityKeypair)
+		);
 		this.lstMint = new PublicKey(config.lstMintAddress);
 	}
 
@@ -69,10 +79,27 @@ export class TokenManager {
 					TOKEN_2022_PROGRAM_ID
 				)
 			);
-               
-			const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.authority]);  
 
-			logger.info(`Minted ${lstAmount / 1e9} lstSOL. Signature: ${signature}`);
+			const { blockhash, lastValidBlockHeight } =
+				await this.connection.getLatestBlockhash("finalized");
+
+			transaction.recentBlockhash = blockhash;
+			transaction.feePayer = this.authority.publicKey;
+			transaction.sign(this.authority);
+
+			const signature = await this.connection.sendRawTransaction(
+				transaction.serialize(),
+				{ skipPreflight: false, maxRetries: 3 }
+			);
+
+			await this.connection.confirmTransaction(
+				{ signature, blockhash, lastValidBlockHeight },
+				"confirmed"
+			);
+
+			logger.info(
+				`Minted ${lstAmount / 1e9} lstSOL. Signature: ${signature}`
+			);
 
 			return signature;
 		} catch (error) {
@@ -91,7 +118,11 @@ export class TokenManager {
 			// Calculate SOL to return (including yield)
 			const solToReturn = await this.calculateSOLReturn(lstAmount);
 
-			logger.info(`Burning ${lstAmount / 1e9} lstSOL, returning ${solToReturn / 1e9} SOL`);
+			logger.info(
+				`Burning ${lstAmount / 1e9} lstSOL, returning ${
+					solToReturn / 1e9
+				} SOL`
+			);
 
 			const userATA = getAssociatedTokenAddressSync(
 				this.lstMint,
@@ -123,9 +154,15 @@ export class TokenManager {
 				})
 			);
 
-			const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.authority]);
+			const signature = await sendAndConfirmTransaction(
+				this.connection,
+				transaction,
+				[this.authority]
+			);
 
-			logger.info(`✅ Burned lstSOL and returned SOL. Signature: ${signature}`);
+			logger.info(
+				`✅ Burned lstSOL and returned SOL. Signature: ${signature}`
+			);
 
 			return signature;
 		} catch (error) {

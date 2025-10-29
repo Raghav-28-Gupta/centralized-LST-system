@@ -3,8 +3,10 @@ export const config = {
 	heliusApiKey: process.env.HELIUS_API_KEY || "",
 	heliusWebsocketUrl: `wss://devnet.helius-rpc.com?api-key=${process.env.HELIUS_API_KEY}`,
 
-	// Solana
-	rpcUrl: process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com",
+	// Solana - using Helius rpc instead of public one
+	rpcUrl: process.env.HELIUS_API_KEY 
+		? `https://devnet.helius-rpc.com/?api-key=${process.env.HELIUS_API_KEY}`
+		: "https://api.devnet.solana.com",
 
 	// Your addresses
 	depositAddress: process.env.DEPOSIT_ADDRESS || "", // The address users send SOL to

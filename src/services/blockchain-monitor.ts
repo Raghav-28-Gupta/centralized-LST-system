@@ -12,6 +12,7 @@ export class BlockchainMonitor {
 	// In-memory store to avoid double-processing. (Can also replace with DB/cache for production.
 	private processedSignatures: Set<string> = new Set();
 	private isReconnecting: boolean = false;
+	private pollingInterval: NodeJS.Timeout | null = null;
 
 	constructor() {
 		// Use 'finalized' for stronger finality guarantees on reads
@@ -58,9 +59,16 @@ export class BlockchainMonitor {
 			try {
 				const message = JSON.parse(data.toString());
 
+				// Log raw message for debugging
+				logger.debug(
+					"WebSocket message received:",
+					JSON.stringify(message, null, 2)
+				);
+
 				if (message.method === "transactionNotification") {
 					// Helius may include transaction under params.result.transaction
-					const transaction = message.params?.result?.transaction ?? message.params?.result;
+					const transaction =
+						message.params?.result?.transaction ?? message.params?.result;
 					await this.handleIncomingTransaction(transaction);
 				}
 			} catch (error) {
@@ -77,84 +85,208 @@ export class BlockchainMonitor {
 			logger.warn("WebSocket closed. Reconnecting...");
 			this.reconnect();
 		});
+
+		// START POLLING AS BACKUP (every 5 seconds)
+		logger.info("🔄 Starting backup polling (every 5 seconds)...");
+		this.startBackupPolling();
 	}
 
-	// Removed polling fallback to avoid duplicate/competing processing. If you need a fallback, implement an idempotent polling pass that checks the same processed-signature store (preferably a durable DB).
+	private startBackupPolling(): void {
+		this.pollingInterval = setInterval(async () => {
+			try {
+				logger.debug("🔄 Polling for new transactions...");
+
+				const signatures = await this.connection.getSignaturesForAddress(
+					this.depositAddress,
+					{ limit: 5 } // Check last 5 transactions
+				);
+
+				for (const sig of signatures) {
+					// Skip if already processed
+					if (this.processedSignatures.has(sig.signature)) {
+						continue;
+					}
+
+					logger.info(
+						`📥 Found new transaction via polling: ${sig.signature}`
+					);
+
+					const tx = await this.connection.getParsedTransaction(
+						sig.signature,
+						{
+							maxSupportedTransactionVersion: 0,
+							commitment: "confirmed",
+						}
+					);
+
+					if (tx) {
+						await this.handleIncomingTransaction(tx);
+					}
+				}
+			} catch (error) {
+				logger.error("Polling error:", error);
+			}
+		}, 5000); // Poll every 5 seconds
+	}
 
 	private async handleIncomingTransaction(transaction: any): Promise<void> {
-		let signature: string | undefined;
+		let signature = "";
 		try {
-			logger.info("New transaction detected!");
+			logger.info("📥 Processing transaction...");
 
-			// Extract a canonical signature for deduplication (Helius WebSocket payloads can have different shapes depending on encoding/version)
-			const signature =
+			// Extract signature
+			signature =
 				transaction?.transaction?.signatures?.[0] ||
 				transaction?.signatures?.[0] ||
 				transaction?.signature ||
-				transaction?.signer ||
 				"";
 
 			if (!signature) {
-				logger.warn("Transaction has no signature; skipping processing.");
+				logger.warn("Transaction has no signature; skipping.");
 				return;
 			}
 
 			// Deduplicate
 			if (this.processedSignatures.has(signature)) {
-				logger.info("Skipping already-processed signature:", signature);
+				logger.debug(`Skipping duplicate: ${signature}`);
 				return;
 			}
 
+			logger.info(`🔍 Analyzing transaction: ${signature}`);
+
 			// Verify transaction succeeded
-			const meta = transaction?.meta ?? transaction?.transaction?.meta ?? null;
+			const meta = transaction?.meta;
 			if (meta && meta.err) {
-				logger.warn(`Transaction ${signature} failed (meta.err), skipping.`);
-				// Optionally mark as processed to avoid re-checking repeatedly
+				logger.warn(
+					`Transaction ${signature} failed with error, skipping.`
+				);
 				this.processedSignatures.add(signature);
 				return;
 			}
 
-			// Parse transaction to extract SOL transfer (Checkout Solana instruction hierarchy)
-			const innerInstrGroups = transaction.meta?.innerInstructions || [];   //Triggered by smart contracts
-			const mainInstructions = transaction.transaction?.message?.instructions || [];
+			// Log transaction structure for debugging
+			logger.debug("Transaction structure:", {
+				hasMeta: !!transaction?.meta,
+				hasTransaction: !!transaction?.transaction,
+				hasMessage: !!transaction?.transaction?.message,
+				hasInstructions: !!transaction?.transaction?.message?.instructions,
+				instructionCount:
+					transaction?.transaction?.message?.instructions?.length || 0,
+			});
 
-			const allInstructions = [
-				...mainInstructions,
-				...innerInstrGroups.flatMap((g: any) => g.instructions || []),
-			];
+			// Parse instructions - handle different response formats
+			let allInstructions: any[] = [];
 
-			for (const instruction of allInstructions) {
-				// System Program (native SOL transfers) program id is the all-zero string
-				const programIdStr = instruction.programId?.toString?.() ?? instruction.programId;
-				if (programIdStr === "11111111111111111111111111111111") {      
-					// Some parsed shapes put parsed on the instruction; others differ.
-					const parsed = instruction.parsed ?? instruction;
-					if (parsed?.type === "transfer" || parsed?.info?.destination) {
+			// Get main instructions
+			const mainInstructions = transaction?.transaction?.message?.instructions || [];
+			allInstructions.push(...mainInstructions);
+
+			// Get inner instructions (from meta)
+			const innerInstrGroups = transaction?.meta?.innerInstructions || [];
+			for (const group of innerInstrGroups) {
+				if (group.instructions) {
+					allInstructions.push(...group.instructions);
+				}
+			}
+
+			logger.info(
+				`Found ${allInstructions.length} total instructions to analyze`
+			);
+
+			// Check each instruction
+			let foundTransfer = false;
+			for (let i = 0; i < allInstructions.length; i++) {
+				const instruction = allInstructions[i];
+
+				// Get program ID (handle different formats)
+				const programIdStr =
+					instruction?.programId?.toString?.() ||
+					instruction?.programId ||
+					"";
+
+				logger.debug(`Instruction ${i}: programId=${programIdStr}, type=${instruction?.parsed?.type}`);
+
+				// Check if this is a System Program instruction (SOL transfer)
+				if (programIdStr === "11111111111111111111111111111111") {
+					const parsed = instruction?.parsed;
+
+					logger.debug(`System Program instruction found:`, {
+						type: parsed?.type,
+						hasInfo: !!parsed?.info,
+						destination: parsed?.info?.destination,
+						source: parsed?.info?.source,
+					});
+
+					if (parsed?.type === "transfer" && parsed?.info) {
+						foundTransfer = true;
 						const destination = parsed.info.destination;
 						const source = parsed.info.source;
 						const lamports = parsed.info.lamports;
 
-						// Only act on transfers TO our deposit address
-						if (destination === config.depositAddress) {
-							logger.info(`Deposit detected: ${lamports / 1e9} SOL from ${source} (sig: ${signature})`);
+						logger.info(
+							`💸 Transfer: ${source?.slice(
+								0,
+								8
+							)}... -> ${destination?.slice(0, 8)}... (${
+								lamports / 1e9
+							} SOL)`
+						);
 
-							// Mark as processed BEFORE external actions to reduce race conditions.
+						// Check if TO our deposit address
+						if (destination === config.depositAddress) {
+							logger.info(`🎯 MATCH! This is a deposit to our address!`);
+							logger.info(
+								`💰 DEPOSIT DETECTED: ${
+									lamports / 1e9
+								} SOL from ${source}`
+							);
+
+							// Mark as processed BEFORE handling
 							this.processedSignatures.add(signature);
 
-							await this.transactionHandler.handleDeposit({
-								signature,
-								userPublicKey: source,
-								amount: lamports,
-								timestamp: Date.now(),
-							});
+							// Clean up old signatures
+							if (this.processedSignatures.size > 1000) {
+								const first = this.processedSignatures
+									.values()
+									.next().value;
+								this.processedSignatures.delete(first!);
+							}
+
+							try {
+								await this.transactionHandler.handleDeposit({
+									signature,
+									userPublicKey: source,
+									amount: lamports,
+									timestamp: Date.now(),
+								});
+								logger.info(`✅ Deposit processed successfully!`);
+							} catch (error) {
+								logger.error(`❌ Failed to process deposit:`, error);
+							}
+
+							return; // Exit after handling
+						} else {
+							logger.debug(
+								`Not our address. Destination: ${destination}, Our address: ${config.depositAddress}`
+							);
 						}
 					}
 				}
-				// Note: Add token program handling here for LST withdrawals if needed.
+			}
+
+			if (!foundTransfer) {
+				logger.debug(`No SOL transfer found in transaction ${signature}`);
+				// Still mark as processed to avoid re-checking
+				this.processedSignatures.add(signature);
 			}
 		} catch (error) {
-			logger.error("Error handling transaction:", error);
-			if(signature) {
+			logger.error("❌ Error handling transaction:", error);
+			if (error instanceof Error) {
+				logger.error("Error details:", error.message);
+				logger.error("Stack:", error.stack);
+			}
+			// Mark as processed even on error to avoid infinite loops
+			if (signature) {
 				this.processedSignatures.add(signature);
 			}
 		}
@@ -172,6 +304,9 @@ export class BlockchainMonitor {
 	public stop(): void {
 		if (this.ws) {
 			this.ws.close();
+		}
+		if (this.pollingInterval) {
+			clearInterval(this.pollingInterval);
 		}
 	}
 }
