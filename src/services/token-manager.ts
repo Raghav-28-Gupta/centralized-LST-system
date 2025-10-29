@@ -93,11 +93,7 @@ export class TokenManager {
 			// Calculate SOL to return (including yield)
 			const solToReturn = await this.calculateSOLReturn(lstAmount);
 
-			logger.info(
-				`Burning ${lstAmount / 1e9} lstSOL, returning ${
-					solToReturn / 1e9
-				} SOL`
-			);
+			logger.info(`Burning ${lstAmount / 1e9} lstSOL, returning ${solToReturn / 1e9} SOL`);
 
 			const userATA = getAssociatedTokenAddressSync(
 				this.lstMint,
@@ -129,15 +125,9 @@ export class TokenManager {
 				})
 			);
 
-			const signature = await this.connection.sendTransaction(
-				transaction,
-				[this.authority]
-			);
-			await this.connection.confirmTransaction(signature, "confirmed");
+			const signature = await sendAndConfirmTransaction(this.connection, transaction, [this.authority]);
 
-			logger.info(
-				`✅ Burned lstSOL and returned SOL. Signature: ${signature}`
-			);
+			logger.info(`✅ Burned lstSOL and returned SOL. Signature: ${signature}`);
 
 			return signature;
 		} catch (error) {
